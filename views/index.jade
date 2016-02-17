@@ -1,0 +1,258 @@
+extends layout
+
+block content
+  //- h1= title
+  //- p Welcome to #{title}
+
+  script(type="x-shader/x-vertex" id="grass_vertexshader").
+
+    attribute float time;
+    attribute vec2 uvScale;
+    attribute vec3 customColor;
+    
+    uniform float globalTime;
+    uniform float walkTime;
+    uniform sampler2D tDisplacement;
+    uniform float uDisplacementBias;
+    uniform float uDisplacementScale;
+    uniform sampler2D shadow;
+
+    uniform vec2 size;
+    varying vec2 vUv;
+    varying vec2 shadowUv;
+
+    varying vec3 vColor;
+    varying float vDarken;
+    varying float vAlpha;
+
+    void main() {
+
+      vColor = customColor;
+
+      vec3 pos = position; 
+
+      // time
+      float localTime = time + globalTime*0.01;
+      float modTime = mod( localTime, 1.0 );
+      float accTime = modTime * modTime;
+
+      float localWalkTime = time+walkTime*0.01;
+      float modWalkTime = mod( localWalkTime, 1.0 );
+      //- modWalkTime = sqrt(modWalkTime);
+      float accWalkTime = modWalkTime * modWalkTime;
+
+      pos.x += (cos(globalTime+pos.x*0.1)*pos.y*0.1) - pow(pos.y*0.1, 1.5); 
+      pos.z += (modWalkTime)*1600.0;
+      pos.z += sin(globalTime+pos.x*0.1)*(pos.y*0.2); 
+
+      vAlpha = min( 1.0, localWalkTime*10.0 );
+      vDarken = 1.0;
+
+      if (pos.y <= 5.0) {
+        vDarken = 0.25 + pos.y/20.0;
+      }
+
+      //- vec4 tPos = modelViewMatrix * vec4( pos, 1.0 );
+      //- tPos.z -= (pos.y*0.2)*2.0;
+
+      vUv = uvScale * uv;
+      shadowUv = vec2(pos.x/size.x +0.5, 0.5 - pos.z/size.y  );
+      
+      vec3 displacedPosition;
+      vec3 dv = texture2D( tDisplacement, shadowUv ).xyz;
+      float df = uDisplacementScale * dv.x + uDisplacementBias;
+
+      displacedPosition = pos + vec3(0.0,1.0,0.0) * df;
+      pos.y = pos.y + df;
+
+      vec4 mvPosition = modelViewMatrix * vec4( displacedPosition, 1.0 );
+      mvPosition.z -= (pos.y*0.2)*2.0;
+
+      //- vUv = uvScale * uv;
+      //- shadowUv = vec2(mvPosition.x/size.x, mvPosition.z/size.y);
+
+
+
+      //- mvPosition.y = pos.y + df;
+
+      gl_Position = projectionMatrix * mvPosition;
+
+    }
+
+
+  script(type="x-shader/x-fragment" id="grass_fragmentshader").
+
+    uniform vec3 color;
+    uniform vec3 sunColor;
+    uniform sampler2D texture;
+    uniform sampler2D shadow;
+    uniform float globalTime;
+    
+    varying vec3 vColor;
+    varying vec2 vUv;
+    varying vec2 shadowUv;
+    varying float vAlpha;
+
+    uniform vec3 fogColor;
+    uniform float fogNear;
+    uniform float fogFar;
+
+    const float threshold = 0.1;
+
+    varying float vDarken;
+
+    void main() {
+
+      vec4 textureColor = texture2D(texture, vUv);
+
+      if (textureColor.w < threshold) {
+        discard;
+
+      } else {
+
+      float depth = gl_FragCoord.z / (gl_FragCoord.w);
+  
+
+      if(depth < 500.0 && depth > 0.0){
+        vec4 shadowColor1 = texture2D(shadow, vec2(shadowUv.x*2.0+sin(globalTime*0.8)*0.05, shadowUv.y*2.0+cos(globalTime*0.4)*0.05));
+        vec4 shadowColor2 = texture2D(shadow, vec2(shadowUv.x*2.0+0.25+cos(globalTime*0.4)*0.05, shadowUv.y*2.0+0.25+sin(globalTime*0.3)*0.05));
+
+        vec4 shadowColor = mix(shadowColor1, shadowColor2, 0.5)*2.5;
+
+        float fogFactor = smoothstep( fogNear, fogFar, depth );
+
+        gl_FragColor = mix(textureColor * vec4(color.xyz*vColor, 1.0), vec4(sunColor.xyz,1.0), pow(shadowColor.x,1.5));
+
+        vec4 color = mix( gl_FragColor, vec4( fogColor, 1.0 ), fogFactor );
+        gl_FragColor = vec4( color.xyz*vDarken , (textureColor.w*3.0)*vAlpha );
+      }
+      else if(depth < 1600.0 && depth > 800.0){
+        gl_FragColor = vec4( color.xyz*vDarken*.8,1.0);
+      }
+      else{
+
+        vec4 shadowColor1 = texture2D(shadow, vec2(shadowUv.x*2.0+sin(globalTime*0.4)*0.05, shadowUv.y*2.0+cos(globalTime*0.2)*0.05));
+        //- gl_FragColor = mix(textureColor * vec4(color.xyz*vColor, 1.0), vec4(sunColor.xyz,1.0), pow(shadowColor.x,1.5));
+        gl_FragColor = mix(textureColor * vec4(color.xyz*vColor, 1.0), vec4(sunColor.xyz,1.0),shadowColor1);
+
+        gl_FragColor = vec4( gl_FragColor.xyz*vDarken , (textureColor.w*3.0)*vAlpha );
+
+      }
+      }
+
+
+    }
+
+  script(id="clouds-vs" type="x-shader/x-vertex").
+      
+      uniform float globalTime;
+      varying vec2 vUv;
+      attribute float time;
+      varying float vAlpha;
+
+
+      void main() {
+
+        // time
+        float localTime = time + globalTime*0.01;
+        float modTime = mod( localTime, 1.0 );
+        float accTime = modTime * modTime;
+        
+        vec3 pos = position; 
+
+        //- pos.x += (cos(globalTime+pos.x*0.001)*pos.y*0.1) - pow(pos.y*0.1, 1.5); 
+        pos.z += (accTime)*3000.0;
+        //- pos.z += sin(globalTime+pos.x*0.01)*(pos.y*0.2); 
+
+        vUv = uv;
+
+        vAlpha = min( 1.0, accTime*2.0 );
+
+        vec4 mvPosition = modelViewMatrix * vec4( pos, 1.0 );
+
+        mvPosition.z -= (pos.y*0.2)*2.0; 
+
+        gl_Position = projectionMatrix * mvPosition;
+
+        //- gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+      }
+
+
+
+  script(id="clouds-fs" type="x-shader/x-fragment").
+
+      uniform sampler2D map;
+
+      uniform vec3 fogColor;
+      uniform float fogNear;
+      uniform float fogFar;
+
+      varying vec2 vUv;
+      varying float vAlpha;
+
+      void main() {
+
+
+
+        float depth = gl_FragCoord.z / gl_FragCoord.w;
+        float fogFactor = smoothstep( fogNear, fogFar, depth );
+
+
+        gl_FragColor = texture2D( map, vUv )*vAlpha;
+        gl_FragColor.w *= pow( gl_FragCoord.z, 20.0 );
+        gl_FragColor = mix( gl_FragColor, vec4( fogColor, gl_FragColor.w ), fogFactor );
+      }
+  script(type="x-shader/x-vertex" id="rays_vertexshader").
+
+      attribute float time;
+
+      uniform float globalTime;
+      varying vec2 vUv;
+      varying float vAlpha;
+
+      void main() {
+
+        vec3 pos = position; 
+
+        // time
+        float localTime = time + globalTime*0.01;
+        float modTime = mod( localTime, 1.0 );
+        float accTime = modTime * modTime;
+
+        pos.x += cos(accTime*60.0)*20.0; 
+
+        pos.z += (accTime)*1500.0;
+
+        vAlpha = min( 1.0, accTime*10.0 ) * (0.3 + sin(accTime*80.0)*0.25);
+
+                vUv = vec2(uv.x*2.0, uv.y);
+
+        vec4 mvPosition = modelViewMatrix * vec4( pos, 1.0 );
+
+        gl_Position = projectionMatrix * mvPosition;
+
+      }
+
+
+  script(type="x-shader/x-fragment" id="rays_fragmentshader").
+
+      uniform vec3 color;
+      uniform sampler2D texture;
+      uniform float globalTime;
+      
+      varying vec2 vUv;
+      varying float vAlpha;
+
+      void main() {
+
+        vec4 textureColor = texture2D(texture, vUv);
+        gl_FragColor = vec4( textureColor.xyz*color.xyz, textureColor.w*vAlpha*0.5 );
+        gl_FragColor.w *= pow( gl_FragCoord.z, 50.0 );
+
+      }
+
+
+
+
+

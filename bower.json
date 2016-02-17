@@ -1,0 +1,14 @@
+{
+  "name": "bliss",
+  "version": "0.0.1",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "components"
+  ],
+  "dependencies": {
+    "threejs": "*",
+    "threejs-stats": "*",
+    "threex-controls": "*"
+  }
+}
